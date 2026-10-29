@@ -6,7 +6,7 @@ Detailed breakdown of every component in the GTM container template.
 
 ## Variables
 
-### Custom Variables (12)
+### Custom Variables (15)
 
 | Variable | Type | Value | Folder | Notes |
 |----------|------|-------|--------|-------|
@@ -22,6 +22,9 @@ Detailed breakdown of every component in the GTM container template.
 | `lu - GA4 ID by Hostname` | Lookup Table | Maps Page Hostname to Measurement ID | Core | **Update per client.** Falls back to `cst - GA4 Measurement ID`. |
 | `dlv - user_id` | Data Layer | `user_id` | Core | Logged-in user identifier |
 | `dlv - user_type` | Data Layer | `user_type` | Core | User segment (prospect, customer, etc.) |
+| `dlv - form_id` | Data Layer | `form_id` | Forms | Form identifier from an AJAX form push |
+| `dlv - form_name` | Data Layer | `form_name` | Forms | Human-readable form name from an AJAX form push |
+| `dlv - form_destination` | Data Layer | `form_destination` | Forms | Thank-you path from an AJAX form push |
 
 ### Built-in Variables (29 enabled)
 
@@ -34,13 +37,18 @@ Other: Event, Container ID, HTML ID, Debug Mode
 
 ---
 
-## Triggers (26)
+## Triggers (28)
 
 ### Core / Utility
 
+#### Consent Initialization - All Pages (Trigger #28)
+- **Type:** Consent Initialization
+- **Used by:** Tag #17 (Consent Default)
+- **Notes:** Fires before every other trigger, including Initialization, so consent defaults are always set before the Google tag loads.
+
 #### Initialization - All Pages (Trigger #17)
 - **Type:** Initialization
-- **Used by:** Tag #1 (Google Tag), Tag #17 (Consent Default)
+- **Used by:** Tag #1 (Google Tag)
 - **Notes:** Fires before All Pages. Google Tag and consent defaults must fire here.
 
 #### DOM Ready - All Pages (Trigger #25)
@@ -73,17 +81,18 @@ Other: Event, Container ID, HTML ID, Debug Mode
 
 #### Click - Outbound Links (Trigger #2)
 - **Type:** Just Links
-- **Condition:** Click URL does NOT contain Page Hostname
+- **Conditions:** Click URL does NOT contain Page Hostname, AND Click URL matches regex `^https?://`
+- **Notes:** The second condition keeps `tel:`, `mailto:`, `javascript:`, and empty links out, so phone and email clicks aren't also counted as outbound.
 - **Wait for tags:** Yes (2s timeout)
 - **Used by:** Tag #3 (Outbound Click)
 
-#### Click - Phone Links (tel:) (Trigger #3)
+#### Click - Phone Links (tel) (Trigger #3)
 - **Type:** Just Links
 - **Condition:** Click URL starts with `tel:`
 - **Wait for tags:** Yes (2s timeout)
 - **Used by:** Tag #4 (Phone Click)
 
-#### Click - Email Links (mailto:) (Trigger #4)
+#### Click - Email Links (mailto) (Trigger #4)
 - **Type:** Just Links
 - **Condition:** Click URL starts with `mailto:`
 - **Wait for tags:** Yes (2s timeout)
@@ -111,6 +120,12 @@ Other: Event, Container ID, HTML ID, Debug Mode
 - **Check validation:** Yes
 - **Used by:** Tag #8 (Form Submit)
 - **Notes:** Only fires on native HTML form submissions. For AJAX forms (Gravity Forms, CF7, WPForms), use a data layer push instead.
+
+#### CE - generate_lead (Trigger #27)
+- **Type:** Custom Event
+- **Event name:** `generate_lead`
+- **Used by:** Tag #26 (Form Submit, Data Layer)
+- **Notes:** Push from the form plugin's success callback. See `data-layer-snippets.js`.
 
 #### CE - sign_up (Trigger #24)
 - **Type:** Custom Event
@@ -164,7 +179,7 @@ All ecommerce triggers are Custom Event type. They fire when the matching event 
 
 ---
 
-## Tags (25)
+## Tags (26)
 
 ### Core
 
@@ -178,7 +193,7 @@ All ecommerce triggers are Custom Event type. They fire when the matching event 
   - `user_id` = `{{dlv - user_id}}` (sent when present in data layer)
 - **User properties:**
   - `user_type` = `{{dlv - user_type}}`
-- **Fires on:** Initialization - All Pages (fires before event tags and after consent defaults)
+- **Fires on:** Initialization - All Pages (fires before event tags; consent defaults have already run on Consent Initialization)
 - **Firing option:** Once per event
 
 ### Engagement
@@ -205,12 +220,12 @@ All ecommerce triggers are Custom Event type. They fire when the matching event 
 #### GA4 Event - Phone Click (Tag #4)
 - **Event name:** `phone_click`
 - **Parameters:** `link_url`, `link_text`
-- **Fires on:** Click - Phone Links (tel:)
+- **Fires on:** Click - Phone Links (tel)
 
 #### GA4 Event - Email Click (Tag #5)
 - **Event name:** `email_click`
 - **Parameters:** `link_url`, `link_text`
-- **Fires on:** Click - Email Links (mailto:)
+- **Fires on:** Click - Email Links (mailto)
 
 #### GA4 Event - File Download (Tag #6)
 - **Event name:** `file_download`
@@ -228,7 +243,13 @@ All ecommerce triggers are Custom Event type. They fire when the matching event 
 - **Event name:** `generate_lead`
 - **Parameters:** `form_id`, `form_classes`, `form_destination`
 - **Fires on:** Form Submission - All Forms
-- **Notes:** `generate_lead` is a GA4 recommended event. For AJAX forms, fire a `generate_lead` custom event via data layer instead.
+- **Notes:** `generate_lead` is a GA4 recommended event. For AJAX forms, push a `generate_lead` event to the data layer instead; Tag #26 sends it.
+
+#### GA4 Event - Form Submit (Data Layer) (Tag #26)
+- **Event name:** `generate_lead`
+- **Parameters:** `form_id`, `form_name`, `form_destination` (from the data layer push)
+- **Fires on:** CE - generate_lead
+- **Notes:** Use for AJAX forms. If a form fires both a native submit and the push, pause Tag #8 so the lead isn't counted twice.
 
 #### GA4 Event - Sign Up (Tag #25)
 - **Event name:** `sign_up`
@@ -272,8 +293,7 @@ All ecommerce tags use `sendEcommerceData: true` with `getEcommerceDataFrom: dat
 
 #### Consent Mode - Default (Tag #17)
 - **Type:** Custom HTML
-- **Fires on:** Initialization - All Pages (before Google Tag)
-- **Priority:** 100 (high — fires first within Initialization)
+- **Fires on:** Consent Initialization - All Pages (before Google Tag)
 - **Status:** Paused
 - **What it does:** Sets all consent categories to `denied` by default, with `wait_for_update: 500` to give the cookie banner time to load.
 

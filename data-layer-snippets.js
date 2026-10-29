@@ -1,7 +1,7 @@
 /**
  * Data Layer Push Snippets for GTM + GA4 Template
  *
- * Copy-paste these into the client's site where needed.
+ * Copy-paste these into your site where needed.
  * Each snippet pushes an event to the GTM data layer that
  * triggers the corresponding tag in the container.
  *
@@ -80,7 +80,8 @@ window.dataLayer.push({
 
 // =============================================================
 // AJAX FORM SUBMISSION (Gravity Forms, CF7, WPForms, etc.)
-// Use when native form submission trigger doesn't fire
+// Use when native form submission trigger doesn't fire.
+// Tag "GA4 Event - Form Submit (Data Layer)" sends this to GA4.
 // =============================================================
 
 // Generic — call after successful AJAX form submit
