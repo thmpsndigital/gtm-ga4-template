@@ -64,6 +64,12 @@
         "containerId": "0",
         "folderId": "8",
         "name": "Consent (Optional)"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "folderId": "9",
+        "name": "Bot Detection"
       }
     ],
     "builtInVariable": [
@@ -684,6 +690,138 @@
           }
         ],
         "parentFolderId": "4"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "variableId": "16",
+        "name": "js - GPU Renderer",
+        "type": "jsm",
+        "parameter": [
+          {
+            "type": "TEMPLATE",
+            "key": "javascript",
+            "value": "function() {\n  // Reads the WebGL renderer once per page and caches it on window, so\n  // later events reuse the result instead of creating another canvas.\n  var cacheKey = '__gtmGpuRenderer';\n  if (typeof window[cacheKey] !== 'string') {\n    var renderer = '';\n    try {\n      var canvas = document.createElement('canvas');\n      var gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');\n      if (gl) {\n        var info = gl.getExtension('WEBGL_debug_renderer_info');\n        renderer = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');\n        var lose = gl.getExtension('WEBGL_lose_context');\n        if (lose) lose.loseContext();\n      }\n    } catch (e) {\n      renderer = '';\n    }\n    window[cacheKey] = renderer;\n  }\n  // GA4 parameter values are capped at 100 characters.\n  return window[cacheKey].slice(0, 100);\n}"
+          }
+        ],
+        "parentFolderId": "9"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "variableId": "17",
+        "name": "js - GPU Bucket",
+        "type": "jsm",
+        "parameter": [
+          {
+            "type": "TEMPLATE",
+            "key": "javascript",
+            "value": "function() {\n  // Referencing the renderer variable makes sure the cache is filled.\n  var renderer = {{js - GPU Renderer}};\n  if (typeof window.__gtmGpuRenderer === 'string') renderer = window.__gtmGpuRenderer;\n  // No WebGL, or a browser that masks the renderer: not enough evidence either way.\n  if (!renderer || /^(webkit webgl|mozilla|generic renderer)$/i.test(renderer)) return 'gpu_not_found';\n  // Software renderers used by headless and server-side browsers.\n  if (/swiftshader|llvmpipe|softpipe|lavapipe|software|basic render|mesa offscreen/i.test(renderer)) return 'virtual_gpu';\n  return 'physical_gpu';\n}"
+          }
+        ],
+        "parentFolderId": "9"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "variableId": "18",
+        "name": "gtes - Shared Event Settings",
+        "type": "gtes",
+        "parameter": [
+          {
+            "type": "LIST",
+            "key": "eventSettingsTable",
+            "list": [
+              {
+                "type": "MAP",
+                "map": [
+                  {
+                    "type": "TEMPLATE",
+                    "key": "parameter",
+                    "value": "gpu_bucket"
+                  },
+                  {
+                    "type": "TEMPLATE",
+                    "key": "parameterValue",
+                    "value": "{{js - GPU Bucket}}"
+                  }
+                ]
+              },
+              {
+                "type": "MAP",
+                "map": [
+                  {
+                    "type": "TEMPLATE",
+                    "key": "parameter",
+                    "value": "gpu_renderer"
+                  },
+                  {
+                    "type": "TEMPLATE",
+                    "key": "parameterValue",
+                    "value": "{{js - GPU Renderer}}"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "parentFolderId": "1"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "variableId": "19",
+        "name": "lu - GA4 ID (Bot Routing)",
+        "type": "smm",
+        "parameter": [
+          {
+            "type": "TEMPLATE",
+            "key": "input",
+            "value": "{{cst - Bot Routing}}|{{js - GPU Bucket}}"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "defaultValue",
+            "value": "{{lu - GA4 ID by Hostname}}"
+          },
+          {
+            "type": "LIST",
+            "key": "map",
+            "list": [
+              {
+                "type": "MAP",
+                "map": [
+                  {
+                    "type": "TEMPLATE",
+                    "key": "key",
+                    "value": "on|virtual_gpu"
+                  },
+                  {
+                    "type": "TEMPLATE",
+                    "key": "value",
+                    "value": "G-BOTTEST"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "parentFolderId": "9"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "variableId": "20",
+        "name": "cst - Bot Routing",
+        "type": "c",
+        "parameter": [
+          {
+            "type": "TEMPLATE",
+            "key": "value",
+            "value": "off"
+          }
+        ],
+        "parentFolderId": "9"
       }
     ],
     "trigger": [
@@ -1426,6 +1564,48 @@
         "triggerId": "28",
         "name": "Consent Initialization - All Pages",
         "type": "CONSENT_INIT"
+      },
+      {
+        "accountId": "0",
+        "containerId": "0",
+        "triggerId": "29",
+        "name": "Exception - Suspected Bot (virtual_gpu)",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "MATCH_REGEX",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": ".*"
+              }
+            ]
+          }
+        ],
+        "filter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{js - GPU Bucket}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "virtual_gpu"
+              }
+            ]
+          }
+        ],
+        "parentFolderId": "9"
       }
     ],
     "tag": [
@@ -1439,7 +1619,7 @@
           {
             "type": "TEMPLATE",
             "key": "tagId",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -1527,6 +1707,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -1556,7 +1741,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -1578,6 +1763,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -1607,7 +1797,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -1659,6 +1849,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -1688,7 +1883,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -1725,6 +1920,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -1754,7 +1954,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -1791,6 +1991,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -1820,7 +2025,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -1872,6 +2077,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -1901,7 +2111,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -1953,6 +2163,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -1982,7 +2197,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -2034,6 +2249,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2063,7 +2283,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -2100,6 +2320,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2129,7 +2354,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -2211,6 +2436,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2240,7 +2470,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -2262,6 +2492,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2291,7 +2526,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "BOOLEAN",
@@ -2302,6 +2537,11 @@
             "type": "TEMPLATE",
             "key": "getEcommerceDataFrom",
             "value": "dataLayer"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2331,7 +2571,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "BOOLEAN",
@@ -2342,6 +2582,11 @@
             "type": "TEMPLATE",
             "key": "getEcommerceDataFrom",
             "value": "dataLayer"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2371,7 +2616,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "BOOLEAN",
@@ -2382,6 +2627,11 @@
             "type": "TEMPLATE",
             "key": "getEcommerceDataFrom",
             "value": "dataLayer"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2411,7 +2661,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "BOOLEAN",
@@ -2422,6 +2672,11 @@
             "type": "TEMPLATE",
             "key": "getEcommerceDataFrom",
             "value": "dataLayer"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2451,7 +2706,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "BOOLEAN",
@@ -2462,6 +2717,11 @@
             "type": "TEMPLATE",
             "key": "getEcommerceDataFrom",
             "value": "dataLayer"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2553,7 +2813,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "BOOLEAN",
@@ -2564,6 +2824,11 @@
             "type": "TEMPLATE",
             "key": "getEcommerceDataFrom",
             "value": "dataLayer"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2593,7 +2858,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "BOOLEAN",
@@ -2604,6 +2869,11 @@
             "type": "TEMPLATE",
             "key": "getEcommerceDataFrom",
             "value": "dataLayer"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2633,7 +2903,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "BOOLEAN",
@@ -2644,6 +2914,11 @@
             "type": "TEMPLATE",
             "key": "getEcommerceDataFrom",
             "value": "dataLayer"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2673,7 +2948,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "BOOLEAN",
@@ -2684,6 +2959,11 @@
             "type": "TEMPLATE",
             "key": "getEcommerceDataFrom",
             "value": "dataLayer"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2713,7 +2993,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "BOOLEAN",
@@ -2724,6 +3004,11 @@
             "type": "TEMPLATE",
             "key": "getEcommerceDataFrom",
             "value": "dataLayer"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2753,7 +3038,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "BOOLEAN",
@@ -2764,6 +3049,11 @@
             "type": "TEMPLATE",
             "key": "getEcommerceDataFrom",
             "value": "dataLayer"
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2793,7 +3083,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -2815,6 +3105,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [
@@ -2844,7 +3139,7 @@
           {
             "type": "TEMPLATE",
             "key": "measurementIdOverride",
-            "value": "{{lu - GA4 ID by Hostname}}"
+            "value": "{{lu - GA4 ID (Bot Routing)}}"
           },
           {
             "type": "LIST",
@@ -2896,6 +3191,11 @@
                 ]
               }
             ]
+          },
+          {
+            "type": "TEMPLATE",
+            "key": "eventSettingsVariable",
+            "value": "{{gtes - Shared Event Settings}}"
           }
         ],
         "firingTriggerId": [

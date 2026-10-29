@@ -1,6 +1,6 @@
 # GTM + GA4 Universal Container Template
 
-A free, importable Google Tag Manager container for GA4. It covers lead-gen sites, ecommerce stores (WooCommerce and Shopify), and content sites: 26 tags, 28 triggers, and 15 variables, organized into 8 folders.
+A free, importable Google Tag Manager container for GA4. It covers lead-gen sites, ecommerce stores (WooCommerce and Shopify), and content sites: 26 tags, 29 triggers, and 20 variables, organized into 9 folders. It also tags likely bot traffic using a WebGL GPU check.
 
 Built and maintained by [Thmpsn.digital](https://thmpsn.digital), a B2B performance marketing agency in Chicago. We use this container as the starting point on our own client installs.
 
@@ -29,6 +29,7 @@ Built and maintained by [Thmpsn.digital](https://thmpsn.digital), a B2B performa
 | Errors | 404 tracking |
 | Search | Site search tracking |
 | Consent (Optional) | Google Consent Mode v2, paused by default |
+| Bot Detection | GPU check variables, optional bot routing, and the ad-tag exception trigger |
 
 ### Tags (26 total)
 
@@ -68,6 +69,7 @@ Built and maintained by [Thmpsn.digital](https://thmpsn.digital), a B2B performa
 - **Environment switching**: `lu - GA4 ID by Hostname` routes prod/staging traffic to separate GA4 properties
 - **User properties**: `user_id` and `user_type` sent on every pageview when present in the data layer
 - **Full ecommerce funnel**: all 11 GA4 recommended ecommerce events
+- **Bot detection**: every event carries a `gpu_bucket` parameter (`virtual_gpu`, `physical_gpu`, or `gpu_not_found`), with optional routing of suspected bots to a separate property
 - **Utility triggers included**: DOM Ready and Window Loaded triggers ready for site-specific tags
 
 ### Enhanced Measurement Overlap
@@ -121,6 +123,48 @@ Event names follow GA4's recommended events wherever one exists, so standard rep
 
 The two consent tags send no GA4 event. They set Consent Mode v2 defaults on page load and update them when your cookie banner pushes `consent_update`.
 
+## Bot Detection (GPU Check)
+
+Headless browsers running on servers usually have no graphics card, so they draw WebGL with a software renderer. Real phones and laptops report real hardware. The template reads the WebGL renderer once per page and sorts every visit into one of three buckets. The method is [Dana DiTomaso's](https://www.linkedin.com/pulse/how-im-removing-bot-traffic-from-ga4-dana-ditomaso-8ksce/); the code in this container is our own implementation of it.
+
+| `gpu_bucket` | What the browser reported | How to treat it |
+|--------------|---------------------------|-----------------|
+| `virtual_gpu` | A software renderer: SwiftShader, llvmpipe, Microsoft Basic Render Driver, and similar | Likely a bot |
+| `physical_gpu` | Real hardware, such as "Apple GPU" or ANGLE with Intel, AMD, NVIDIA, Apple, Adreno, or Mali | Likely a person |
+| `gpu_not_found` | No WebGL, or a browser that hides the renderer | Unknown. Keep it in your data. |
+
+Two variables in the **Bot Detection** folder do the work. `js - GPU Renderer` creates one canvas, reads the renderer, caches the result for the rest of the page, and returns it trimmed to 100 characters. `js - GPU Bucket` turns that string into the bucket. Both are wrapped in `try/catch`, so a failure returns `gpu_not_found` instead of breaking tags. In our tests in a normal Chrome, the first read took under 5 ms, and later events on the page reuse the cached value.
+
+### Observe mode (the default)
+
+`gpu_bucket` and `gpu_renderer` ride on every GA4 event through `gtes - Shared Event Settings`, which the Google tag and every GA4 event tag reference. (GA4 event tags also inherit the Google tag's shared event settings, so in an existing container it's enough to set it on the Google tag. The exception is an event tag that has its own event settings variable: add the two rows to that variable as well.) Nothing is filtered or rerouted. You get the data to see how much of your traffic is `virtual_gpu` before you act on it.
+
+**Before you publish**, register `gpu_bucket` as an event-scoped custom dimension in GA4 Admin > Custom Definitions. Registration isn't retroactive, so events collected before it never show the dimension. We leave `gpu_renderer` unregistered: it has hundreds of distinct values, and GA4 warns against high-cardinality dimensions. It's still collected on every event, so you can register it later or read it in BigQuery.
+
+To compare segments, build an Exploration with `gpu_bucket` as a dimension, or a comparison on any standard report.
+
+### Route mode (optional, off by default)
+
+Route mode sends suspected bots to a separate GA4 property, so your main property only gets `physical_gpu` and `gpu_not_found` traffic.
+
+1. Create a test GA4 property, or use your staging one.
+2. In `lu - GA4 ID (Bot Routing)`, replace the `G-BOTTEST` placeholder with that property's Measurement ID.
+3. Change `cst - Bot Routing` from `off` to `on`.
+
+Every tag reads its Measurement ID from `lu - GA4 ID (Bot Routing)`. With the switch off, that variable always returns `lu - GA4 ID by Hostname`, so the container behaves exactly as it does without route mode.
+
+For ad tags (Google Ads, Meta, LinkedIn, and so on), add the `Exception - Suspected Bot (virtual_gpu)` trigger as a blocking trigger, so suspected bots don't fire conversions or build remarketing audiences. The template has no ad tags, so this trigger isn't attached to anything yet.
+
+Run observe mode for a few weeks before turning either of these on, and check that `virtual_gpu` traffic looks like bots in your data: zero engagement, odd locations, and no conversions.
+
+### Limits
+
+- **WebGL off or masked.** Some privacy browsers and settings block WebGL or report a generic renderer ("WebKit WebGL", "Mozilla"). Those visits land in `gpu_not_found`, which is why that bucket stays in your main data.
+- **SwiftShader is going away.** Chrome is removing its automatic fallback to SwiftShader. As it does, more headless bots will get no WebGL at all and move from `virtual_gpu` to `gpu_not_found`. The check will catch fewer bots over time, so watch the `gpu_not_found` share.
+- **Real people on virtual machines.** A person using a remote desktop or a VM without a graphics card can report a software renderer and land in `virtual_gpu`. That's another reason to observe before routing.
+- **It only catches lazy bots.** Bots that run on machines with GPUs, or that fake the WebGL response, get through.
+- **The renderer string is a device signal.** It isn't personal data, but it's the kind of detail used in fingerprinting. If you'd rather not store it, delete the `gpu_renderer` row from `gtes - Shared Event Settings` and keep only `gpu_bucket`.
+
 ---
 
 ## Setup Checklist
@@ -157,6 +201,8 @@ Every custom parameter sent via GTM is **invisible in reports** until registered
 | Parameter | Scope | Description |
 |-----------|-------|-------------|
 | `content_group` | Event | Page category (Homepage, Blog, etc.) |
+| `gpu_bucket` | Event | Bot check result: `virtual_gpu`, `physical_gpu`, or `gpu_not_found` |
+| `gpu_renderer` | Event | WebGL renderer string, trimmed to 100 characters. Optional; high cardinality, so we usually leave it unregistered. |
 | `percent_scrolled` | Event | Scroll depth percentage |
 | `link_url` | Event | Clicked link destination |
 | `link_text` | Event | Clicked link text |
@@ -261,7 +307,7 @@ These are not in the template but are worth considering for some sites:
 
 | File | Purpose |
 |------|---------|
-| `container.json` | Importable GTM container (26 tags, 28 triggers, 15 variables) |
+| `container.json` | Importable GTM container (26 tags, 29 triggers, 20 variables) |
 | `README.md` | This file |
 | `REFERENCE.md` | Detailed reference for every tag, trigger, and variable |
 | `data-layer-snippets.js` | Copy-paste data layer push snippets for developers |
@@ -274,7 +320,7 @@ These are not in the template but are worth considering for some sites:
 Checked against Google's Tag Manager release notes through October 2026. The container uses the standard Google tag and GA4 Event tags, which still work as they are. Recent changes that touch it:
 
 - **Optimized containers and destinations (October 2026)** are opt-in. If you switch a container over, review the Google tag's configuration parameters (`content_group`, `user_id`, `debug_mode`) once the destination is linked, since destinations inherit container-level settings.
-- **`gtag('config')` events in the data layer (October 2026)** can fire tags that use wildcard Custom Event triggers. Every Custom Event trigger in this template matches an exact event name, so none are affected.
+- **`gtag('config')` events in the data layer (October 2026)** can fire tags that use wildcard Custom Event triggers. Every Custom Event trigger that fires a tag in this template matches an exact event name, so none are affected. The one wildcard trigger, `Exception - Suspected Bot (virtual_gpu)`, is meant only as a blocking trigger.
 - **Install path (July 2026):** load the container with the standard GTM snippet (`GTM-XXXXXX`). A container loaded through `/gtag/js` under a `G-` ID runs only Google-provided tags, which would block the Custom HTML consent tags.
 - **New built-in variables (December 2025):** Client ID, Session ID, and Session Number are available under Utilities if you want to send them as parameters. The template doesn't use them.
 

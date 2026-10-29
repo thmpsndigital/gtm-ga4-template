@@ -6,7 +6,7 @@ Detailed breakdown of every component in the GTM container template.
 
 ## Variables
 
-### Custom Variables (15)
+### Custom Variables (20)
 
 | Variable | Type | Value | Folder | Notes |
 |----------|------|-------|--------|-------|
@@ -25,6 +25,11 @@ Detailed breakdown of every component in the GTM container template.
 | `dlv - form_id` | Data Layer | `form_id` | Forms | Form identifier from an AJAX form push |
 | `dlv - form_name` | Data Layer | `form_name` | Forms | Human-readable form name from an AJAX form push |
 | `dlv - form_destination` | Data Layer | `form_destination` | Forms | Thank-you path from an AJAX form push |
+| `js - GPU Renderer` | Custom JS | WebGL renderer string, read once per page and cached on `window.__gtmGpuRenderer` | Bot Detection | Returns the first 100 characters. Empty string when WebGL is unavailable. |
+| `js - GPU Bucket` | Custom JS | `virtual_gpu`, `physical_gpu`, or `gpu_not_found` | Bot Detection | Classifies the full cached renderer string. See README, Bot Detection. |
+| `gtes - Shared Event Settings` | Google Tag: Event Settings | `gpu_bucket`, `gpu_renderer` | Core | Referenced by the Google tag and every GA4 event tag, so these parameters go on every event. |
+| `cst - Bot Routing` | Constant | `off` | Bot Detection | Set to `on` to send `virtual_gpu` traffic to the bot test property. |
+| `lu - GA4 ID (Bot Routing)` | Lookup Table | Input `{{cst - Bot Routing}}\|{{js - GPU Bucket}}`; `on\|virtual_gpu` maps to `G-BOTTEST` | Bot Detection | Every tag's Measurement ID. Falls back to `lu - GA4 ID by Hostname`, so with routing off nothing changes. **Replace `G-BOTTEST`** before turning routing on. |
 
 ### Built-in Variables (29 enabled)
 
@@ -37,7 +42,7 @@ Other: Event, Container ID, HTML ID, Debug Mode
 
 ---
 
-## Triggers (28)
+## Triggers (29)
 
 ### Core / Utility
 
@@ -177,6 +182,14 @@ All ecommerce triggers are Custom Event type. They fire when the matching event 
 - **Used by:** Tag #18 (Consent Update)
 - **Notes:** Fire this event from the cookie consent banner when the user accepts.
 
+### Bot Detection
+
+#### Exception - Suspected Bot (virtual_gpu) (Trigger #29)
+- **Type:** Custom Event, event name matches regex `.*`
+- **Condition:** `js - GPU Bucket` equals `virtual_gpu`
+- **Used by:** Nothing by default
+- **Notes:** Add as a blocking trigger on ad tags so suspected bots don't fire conversions or remarketing. The wildcard matches every data layer event, so it can block tags on any trigger type.
+
 ---
 
 ## Tags (26)
@@ -185,7 +198,8 @@ All ecommerce triggers are Custom Event type. They fire when the matching event 
 
 #### GA4 - Google Tag (Tag #1)
 - **Type:** Google Tag
-- **Measurement ID:** `{{lu - GA4 ID by Hostname}}` (falls back to `{{cst - GA4 Measurement ID}}`)
+- **Measurement ID:** `{{lu - GA4 ID (Bot Routing)}}`, which returns `{{lu - GA4 ID by Hostname}}` unless bot routing is on (that falls back to `{{cst - GA4 Measurement ID}}`)
+- **Shared event settings:** `{{gtes - Shared Event Settings}}` (`gpu_bucket`, `gpu_renderer`)
 - **Config settings:**
   - `content_group` = `{{lu - Content Group}}`
   - `send_page_view` = true
